@@ -73,6 +73,10 @@ As this is a personal learning project, I'm open to suggestions and collaboratio
 - **OLLAMA**: For providing a platform to run local LLMs.
 - **Open-Source Community**: For fostering a collaborative and supportive environment.
 
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
 ---
 
 Thank you for taking the time to check out my project. I'm excited to see where this journey takes me, and I hope it inspires others to explore the possibilities of AI-assisted coding!

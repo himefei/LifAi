@@ -8,7 +8,6 @@ from lifai.utils.logger_utils import get_module_logger
 from lifai.config.prompts import improvement_options, llm_prompts
 import time
 import threading
-import keyboard
 
 logger = get_module_logger(__name__)
 
@@ -17,68 +16,70 @@ class FloatingToolbar(tk.Toplevel):
         super().__init__()
         self.callback = callback
         self.clipboard = clipboard
-        self.setup_window()
-        self.setup_ui()
         
-        # Variables for dragging
-        self.drag_data = {"x": 0, "y": 0}
-        self.waiting_for_selection = False
-        self.mouse_listener = None
-    
-    def setup_window(self):
-        self.title("✨ Text Enhancer")
+        # Prevent window from being closed with X button
+        self.protocol("WM_DELETE_WINDOW", lambda: None)
+        
+        # Setup window properties
+        self.title("LifAi Toolbar")
         self.attributes('-topmost', True)
-        self.resizable(False, False)
+        self.overrideredirect(True)
         
-        # Make window draggable
-        self.bind("<Button-1>", self.start_drag)
-        self.bind("<B1-Motion>", self.on_drag)
+        # Create main frame
+        self.main_frame = ttk.Frame(self)
+        self.main_frame.pack(padx=5, pady=5)
         
-    def setup_ui(self):
-        # Main frame with border and padding
-        self.main_frame = ttk.Frame(self, padding=5)
-        self.main_frame.pack(fill=tk.BOTH, expand=True)
+        # Create title bar for dragging
+        title_frame = ttk.Frame(self.main_frame)
+        title_frame.pack(fill=tk.X, pady=(0, 5))
         
-        # Create dropdown using existing improvement_options
-        self.selected_prompt = tk.StringVar()
+        title_label = ttk.Label(title_frame, text="✨ LifAi")
+        title_label.pack(side=tk.LEFT)
+        
+        # Minimize button
+        min_btn = ttk.Button(title_frame, text="—", width=3,
+                            command=self.minimize_toolbar)
+        min_btn.pack(side=tk.RIGHT)
+        
+        # Bind dragging events
+        title_frame.bind('<Button-1>', self.start_drag)
+        title_frame.bind('<B1-Motion>', self.on_drag)
+        
+        # Create prompt selection
+        self.selected_prompt = tk.StringVar(value=improvement_options[0])
         self.prompt_combo = ttk.Combobox(
             self.main_frame,
             textvariable=self.selected_prompt,
             values=improvement_options,
             state='readonly',
-            width=25
+            width=30
         )
-        self.prompt_combo.pack(padx=3, pady=3)
-        self.prompt_combo.set(improvement_options[0])
+        self.prompt_combo.pack(pady=(0, 5))
         
         # Create enhance button
         self.enhance_btn = ttk.Button(
             self.main_frame,
             text="✨ Select & Enhance",
-            width=20,
             command=self.start_enhancement
         )
-        self.enhance_btn.pack(padx=3, pady=3)
+        self.enhance_btn.pack()
         
-        # Add minimize button
-        self.min_btn = ttk.Button(
-            self.main_frame,
-            text="−",
-            width=3,
-            command=self.minimize_toolbar
-        )
-        self.min_btn.pack(side=tk.RIGHT, padx=(3,0))
+        # Variables for dragging
+        self.drag_data = {"x": 0, "y": 0}
+        self.waiting_for_selection = False
+        self.mouse_down = False
+        self.mouse_down_time = None
         
     def start_drag(self, event):
-        """Begin drag of the window"""
+        """Begin dragging the window"""
         self.drag_data["x"] = event.x
         self.drag_data["y"] = event.y
-
+        
     def on_drag(self, event):
-        """Handle window drag"""
-        dx = event.x - self.drag_data["x"]
-        dy = event.y - self.drag_data["y"]
-        self.geometry(f"+{self.winfo_x() + dx}+{self.winfo_y() + dy}")
+        """Handle window dragging"""
+        x = self.winfo_x() - self.drag_data["x"] + event.x
+        y = self.winfo_y() - self.drag_data["y"] + event.y
+        self.geometry(f"+{x}+{y}")
         
     def minimize_toolbar(self):
         """Minimize to a small floating button"""
@@ -88,36 +89,49 @@ class FloatingToolbar(tk.Toplevel):
             self.mini_window.overrideredirect(True)
             self.mini_window.attributes('-topmost', True)
             
+            # Prevent mini window from being closed
+            self.mini_window.protocol("WM_DELETE_WINDOW", lambda: None)
+            
             # Create small button
             btn = ttk.Button(self.mini_window, text="✨", width=3,
                            command=self.restore_toolbar)
             btn.pack()
             
-            # Make mini window draggable
-            btn.bind("<Button-1>", self.start_mini_drag)
-            btn.bind("<B1-Motion>", self.on_mini_drag)
+            # Position mini window where the toolbar was
+            x = self.winfo_x()
+            y = self.winfo_y()
+            self.mini_window.geometry(f"+{x}+{y}")
             
-        self.mini_window.geometry(f"+{self.winfo_x()}+{self.winfo_y()}")
-        self.mini_window.deiconify()
-        
+            # Bind dragging for mini window
+            btn.bind('<Button-1>', self.start_mini_drag)
+            btn.bind('<B1-Motion>', self.on_mini_drag)
+            
     def restore_toolbar(self):
-        """Restore the full toolbar"""
+        """Restore the main toolbar"""
         if hasattr(self, 'mini_window'):
+            # Get position from mini window
             x = self.mini_window.winfo_x()
             y = self.mini_window.winfo_y()
-            self.mini_window.withdraw()
+            
+            # Destroy mini window
+            self.mini_window.destroy()
+            delattr(self, 'mini_window')
+            
+            # Show main window at mini window's position
             self.geometry(f"+{x}+{y}")
-        self.deiconify()
-        
+            self.deiconify()
+            
     def start_mini_drag(self, event):
+        """Begin dragging the mini window"""
         self.drag_data["x"] = event.x
         self.drag_data["y"] = event.y
         
     def on_mini_drag(self, event):
-        dx = event.x - self.drag_data["x"]
-        dy = event.y - self.drag_data["y"]
-        self.mini_window.geometry(f"+{self.mini_window.winfo_x() + dx}+{self.mini_window.winfo_y() + dy}")
-    
+        """Handle mini window dragging"""
+        x = self.mini_window.winfo_x() - self.drag_data["x"] + event.x
+        y = self.mini_window.winfo_y() - self.drag_data["y"] + event.y
+        self.mini_window.geometry(f"+{x}+{y}")
+        
     def start_enhancement(self):
         """Start the enhancement process"""
         if self.waiting_for_selection:
@@ -132,12 +146,11 @@ class FloatingToolbar(tk.Toplevel):
         threading.Thread(target=self.wait_for_selection, 
                        args=(prompt_template,), 
                        daemon=True).start()
-    
+        
     def wait_for_selection(self, prompt_template):
         """Wait for text selection and then process it"""
         try:
             self.mouse_down = False
-            self.mouse_down_time = None
             
             def on_click(x, y, button, pressed):
                 if button == mouse.Button.left:
@@ -178,6 +191,17 @@ class FloatingToolbar(tk.Toplevel):
                 text="✨ Select & Enhance", 
                 state='normal'
             ))
+            
+    def update_prompts(self, new_options):
+        """Update the prompts dropdown with new options"""
+        current = self.selected_prompt.get()
+        self.prompt_combo['values'] = new_options
+        
+        # Try to keep the current selection if it still exists
+        if current in new_options:
+            self.selected_prompt.set(current)
+        else:
+            self.prompt_combo.set(new_options[0])
 
 class FloatingToolbarModule:
     def __init__(self, settings: Dict, ollama_client: OllamaClient):
@@ -186,16 +210,18 @@ class FloatingToolbarModule:
         self.ollama_client = ollama_client
         self.clipboard = ClipboardManager()
         self.toolbar = None
+        self.cached_options = None  # Store updates when toolbar is not active
 
     def enable(self):
         logger.info("Enabling Floating Toolbar")
         if not self.toolbar:
-            # Pass clipboard manager to toolbar
             self.toolbar = FloatingToolbar(
                 callback=self.process_text,
                 clipboard=self.clipboard
             )
-            # Position in top-right corner initially
+            # Apply any cached updates
+            if self.cached_options:
+                self.toolbar.update_prompts(self.cached_options)
             screen_width = self.toolbar.winfo_screenwidth()
             self.toolbar.geometry(f"+{screen_width-300}+50")
 
@@ -229,3 +255,9 @@ class FloatingToolbarModule:
         except Exception as e:
             logger.error(f"Error processing text: {str(e)}")
             messagebox.showerror("Error", f"Error processing text: {e}")
+
+    def update_prompts(self, new_options):
+        """Handle prompt updates whether toolbar is active or not"""
+        self.cached_options = new_options
+        if self.toolbar:
+            self.toolbar.update_prompts(new_options)

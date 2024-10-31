@@ -13,15 +13,15 @@ class TextImproverWindow:
         self.settings = settings
         self.ollama_client = ollama_client
         self.window = None
-        self.selected_improvement = None
+        self.cached_options = None
 
     def create_window(self):
+        """Create the text improver window"""
         self.window = tk.Toplevel()
         self.window.title("Text Improver")
-        self.window.geometry("600x600")
         
-        # Prevent closing with X button (hide instead)
-        self.window.protocol("WM_DELETE_WINDOW", self.hide)
+        # Prevent window from being closed with X button
+        self.window.protocol("WM_DELETE_WINDOW", lambda: None)
         
         self.selected_improvement = tk.StringVar(self.window)
         self.setup_ui()
@@ -148,3 +148,9 @@ class TextImproverWindow:
     def hide(self):
         if self.window:
             self.window.withdraw()
+
+    def update_prompts(self, new_options):
+        """Handle prompt updates whether window is active or not"""
+        self.cached_options = new_options
+        if self.window:
+            self.update_window_prompts(new_options)

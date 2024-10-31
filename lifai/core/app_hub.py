@@ -13,6 +13,7 @@ from lifai.utils.ollama_client import OllamaClient
 from lifai.modules.text_improver.improver import TextImproverWindow
 from lifai.modules.floating_toolbar.toolbar import FloatingToolbarModule
 from lifai.core.toggle_switch import ToggleSwitch
+from lifai.modules.prompt_editor.editor import PromptEditorWindow
 
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -82,6 +83,9 @@ class LifAiHub:
         
         # Log initialization
         logging.info("LifAi Control Hub initialized")
+        
+        # Bind window close event
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def setup_ui(self):
         # Settings panel with padding
@@ -135,6 +139,14 @@ class LifAiHub:
             self.toggle_floating_toolbar
         )
         self.toolbar_toggle.pack(fill=tk.X, pady=5)
+
+        # Prompt Editor toggle
+        self.prompt_editor_toggle = ToggleSwitch(
+            self.modules_frame,
+            "Prompt Editor",
+            self.toggle_prompt_editor
+        )
+        self.prompt_editor_toggle.pack(fill=tk.X, pady=5)
 
         # Initialize logging setup
         self.setup_logging()
@@ -243,7 +255,12 @@ class LifAiHub:
             logging.error(f"Failed to save logs: {e}")
 
     def initialize_modules(self):
-        # Initialize modules (but don't show them)
+        # Initialize prompt editor first
+        self.modules['prompt_editor'] = PromptEditorWindow(
+            settings=self.settings
+        )
+        
+        # Initialize other modules
         self.modules['text_improver'] = TextImproverWindow(
             settings=self.settings,
             ollama_client=self.ollama_client
@@ -253,6 +270,17 @@ class LifAiHub:
             settings=self.settings,
             ollama_client=self.ollama_client
         )
+        
+        # Register prompt update callbacks
+        if hasattr(self.modules['text_improver'], 'update_prompts'):
+            self.modules['prompt_editor'].add_update_callback(
+                self.modules['text_improver'].update_prompts
+            )
+            
+        if hasattr(self.modules['floating_toolbar'].toolbar, 'update_prompts'):
+            self.modules['prompt_editor'].add_update_callback(
+                self.modules['floating_toolbar'].toolbar.update_prompts
+            )
 
     def toggle_text_improver(self):
         if self.text_improver_toggle.get():
@@ -266,10 +294,25 @@ class LifAiHub:
         else:
             self.modules['floating_toolbar'].disable()
 
+    def toggle_prompt_editor(self):
+        if self.prompt_editor_toggle.get():
+            self.modules['prompt_editor'].show()
+        else:
+            self.modules['prompt_editor'].hide()
+
     def run(self):
         # Make sure the hub window stays on top
         self.root.attributes('-topmost', True)
         self.root.mainloop()
+
+    def on_closing(self):
+        """Handle application closing"""
+        # Destroy all module windows
+        for module in self.modules.values():
+            if hasattr(module, 'destroy'):
+                module.destroy()
+        
+        self.root.destroy()
 
 if __name__ == "__main__":
     app = LifAiHub()
