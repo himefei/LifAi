@@ -55,7 +55,7 @@ class TextCheckerApp:
         self.fetch_models()
         self.model_label = ttk.Label(self.root, text="Select Model:")
         self.model_label.pack(pady=5)
-        self.model_dropdown = ttk.Combobox(self.root, textvariable=self.selected_model, values=self.model_options)
+        self.model_dropdown = ttk.Combobox(self.root, textvariable=self.selected_model, values=self.model_options, width=30)
         self.model_dropdown.pack(pady=5)
         if self.model_options:
             self.model_dropdown.current(0)
@@ -63,12 +63,12 @@ class TextCheckerApp:
         # Improvement selection
         self.improvement_label = ttk.Label(self.root, text="Select Improvement:")
         self.improvement_label.pack(pady=5)
-        self.improvement_dropdown = ttk.Combobox(self.root, textvariable=self.selected_improvement, values=improvement_options)
+        self.improvement_dropdown = ttk.Combobox(self.root, textvariable=self.selected_improvement, values=improvement_options, width=30)
         self.improvement_dropdown.pack(pady=5)
         self.improvement_dropdown.current(0)
 
         # Check button
-        self.check_button = ttk.Button(self.root, text="Check Text", command=self.check_text)
+        self.check_button = ttk.Button(self.root, text="Enhance", command=self.check_text)
         self.check_button.pack(pady=10)
         self.status_label = ttk.Label(self.root, text="")
         self.status_label.pack(pady=5)
@@ -87,15 +87,16 @@ class TextCheckerApp:
         listener.start()
 
     def check_selection(self, x, y):
-        prev_clipboard = pyperclip.paste()
-        keyboard.send('ctrl+c')
-        time.sleep(0.1)
-        selected_text = pyperclip.paste()
-        pyperclip.copy(prev_clipboard)
-        if selected_text.strip():
-            self.toolbar.geometry(f"+{x+10}+{y+10}")
-            self.toolbar.deiconify()
-            self.toolbar.lift()
+        try:
+            prev_clipboard = pyperclip.paste()
+            keyboard.send('ctrl+c')
+            time.sleep(0.1)
+            selected_text = pyperclip.paste()
+            pyperclip.copy(prev_clipboard)
+            if selected_text.strip():
+                self.toolbar.show_at_position(x, y)
+        except Exception as e:
+            print(f"Error checking selection: {e}")
 
     def check_text(self):
         text = self.input_text.get(1.0, tk.END).strip()
@@ -104,6 +105,8 @@ class TextCheckerApp:
         self.process_text(text)
 
     def process_text(self, text):
+        self.status_label.config(text="Processing...")
+        self.root.update()
         try:
             improvement = self.selected_improvement.get()
             prompt = llm_prompts.get(improvement, "Please improve this text:")
@@ -123,6 +126,8 @@ class TextCheckerApp:
             self.show_error(f"Could not connect to Ollama: {e}")
         except Exception as e:
             self.show_error(f"An unexpected error occurred: {e}")
+        finally:
+            self.status_label.config(text="")
 
     def update_output(self, text):
         self.output_text.delete(1.0, tk.END)
@@ -152,7 +157,7 @@ class TextCheckerApp:
                             
                             {selected_text}"""
             payload = {
-                "model": "llama2",
+                "model": self.selected_model.get(),
                 "prompt": prompt,
                 "stream": False
             }
