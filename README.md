@@ -32,9 +32,8 @@ This project is my way of exploring the potential of AI-assisted coding and push
 
 ## Features (Planned)
 
-- **Local LLM Integration**: Use OLLAMA to run LLMs locally, ensuring privacy and efficient performance.
-- **User-Friendly Interface**: Develop an intuitive interface for easy interaction with the application.
-- **Customizable Settings**: Allow users to customize features like language preferences and style guidelines.
+- **to work universally in a PC with writing assist**
+- **call agent to perform specific task**
 
 ## Getting Started
 
@@ -66,10 +65,6 @@ This project is my way of exploring the potential of AI-assisted coding and push
 ## Contributing
 
 As this is a personal learning project, I'm open to suggestions and collaborations. If you have ideas or want to contribute, feel free to open an issue or submit a pull request.
-
-## License
-
-This project is licensed under the [MIT License](LICENSE).
 
 ## Acknowledgments
 
