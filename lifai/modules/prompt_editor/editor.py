@@ -13,29 +13,68 @@ class PromptEditorWindow:
     def __init__(self, settings: Dict):
         self.settings = settings
         self.window = None
+        self.prompts_file = os.path.join(os.path.dirname(__file__), '../../config/saved_prompts.py')
+        
+        # Load saved prompts or use defaults
         self.prompts_data = {
-            'options': improvement_options.copy(),
-            'templates': llm_prompts.copy()
+            'templates': self.load_saved_prompts()
         }
         self.update_callbacks = []
         self.is_visible = False
         self.has_unsaved_changes = False
         
+    def load_saved_prompts(self):
+        """Load prompts from saved file or return defaults"""
+        try:
+            if os.path.exists(self.prompts_file):
+                namespace = {}
+                with open(self.prompts_file, 'r', encoding='utf-8') as f:
+                    exec(f.read(), namespace)
+                if 'llm_prompts' in namespace:
+                    logger.info("Loaded saved prompts successfully")
+                    return namespace['llm_prompts']
+        except Exception as e:
+            logger.error(f"Error loading saved prompts: {e}")
+        return llm_prompts.copy()
+
+    def save_prompts_to_file(self):
+        """Save current prompts to file"""
+        try:
+            os.makedirs(os.path.dirname(self.prompts_file), exist_ok=True)
+            with open(self.prompts_file, 'w', encoding='utf-8') as f:
+                f.write("llm_prompts = {\n")
+                for name, template in self.prompts_data['templates'].items():
+                    f.write(f"    \"{name}\": \"\"\"{template}\"\"\",\n")
+                f.write("}\n\n")
+                f.write("# Get options from llm_prompts keys\n")
+                f.write("improvement_options = list(llm_prompts.keys())\n")
+            logger.info("Prompts saved to file successfully")
+        except Exception as e:
+            logger.error(f"Error saving prompts to file: {e}")
+            messagebox.showerror("Error", f"Failed to save prompts: {e}")
+
     def add_update_callback(self, callback: Callable):
         """Add a callback to be notified when prompts are updated"""
         if callback not in self.update_callbacks:
             self.update_callbacks.append(callback)
         
     def notify_prompt_updates(self):
-        improvement_options.clear()
-        improvement_options.extend(self.prompts_data['options'])
-        
+        """Update the global prompts"""
+        # Update global variables
         llm_prompts.clear()
         llm_prompts.update(self.prompts_data['templates'])
         
+        # Get the list of options
+        options = list(llm_prompts.keys())
+        
+        # Update improvement_options
+        improvement_options.clear()
+        improvement_options.extend(options)
+        
+        # Notify all callbacks with the new options
         for callback in self.update_callbacks:
             try:
-                callback(self.prompts_data['options'])
+                callback(options)
             except Exception as e:
                 logger.error(f"Error notifying prompt update: {e}")
         
@@ -78,7 +117,7 @@ class PromptEditorWindow:
         self.prompts_list.bind('<<ListboxSelect>>', self.on_prompt_select)
         
         # Populate list
-        for option in self.prompts_data['options']:
+        for option in self.prompts_data['templates'].keys():
             self.prompts_list.insert(tk.END, option)
             
         # Editor frame (right side)
@@ -102,41 +141,70 @@ class PromptEditorWindow:
         ttk.Label(editor_frame, text=help_text, foreground='gray').pack(anchor=tk.W)
         
         # Buttons frame
-        btn_frame = ttk.Frame(editor_frame)
-        btn_frame.pack(fill=tk.X, pady=10)
+        buttons_frame = ttk.Frame(editor_frame)
+        buttons_frame.pack(fill=tk.X, pady=10)
         
-        ttk.Button(btn_frame, text="New", command=self.new_prompt).pack(side=tk.LEFT, padx=2)
-        ttk.Button(btn_frame, text="Save", command=self.save_prompt).pack(side=tk.LEFT, padx=2)
-        ttk.Button(btn_frame, text="Delete", command=self.delete_prompt).pack(side=tk.LEFT, padx=2)
-        ttk.Button(btn_frame, text="Export", command=self.export_prompts).pack(side=tk.RIGHT, padx=2)
-        ttk.Button(btn_frame, text="Import", command=self.import_prompts).pack(side=tk.RIGHT, padx=2)
-        
-        # Add status label and apply button at the bottom
-        status_frame = ttk.Frame(editor_frame)
-        status_frame.pack(fill=tk.X, pady=(5, 0))
-        
-        self.status_label = ttk.Label(
-            status_frame, 
-            text="No unsaved changes",
-            foreground='gray'
+        # Save button
+        save_btn = ttk.Button(
+            buttons_frame,
+            text="Save Prompt",
+            command=self.save_prompt
         )
-        self.status_label.pack(side=tk.LEFT)
+        save_btn.pack(side=tk.LEFT, padx=5)
         
+        # Delete button
+        delete_btn = ttk.Button(
+            buttons_frame,
+            text="Delete Prompt",
+            command=self.delete_prompt
+        )
+        delete_btn.pack(side=tk.LEFT, padx=5)
+        
+        # New button
+        new_btn = ttk.Button(
+            buttons_frame,
+            text="New Prompt",
+            command=self.new_prompt
+        )
+        new_btn.pack(side=tk.LEFT, padx=5)
+        
+        # Export button
+        export_btn = ttk.Button(
+            buttons_frame,
+            text="Export",
+            command=self.export_prompts
+        )
+        export_btn.pack(side=tk.LEFT, padx=5)
+        
+        # Import button
+        import_btn = ttk.Button(
+            buttons_frame,
+            text="Import",
+            command=self.import_prompts
+        )
+        import_btn.pack(side=tk.LEFT, padx=5)
+        
+        # Apply changes button
         self.apply_btn = ttk.Button(
-            status_frame,
+            editor_frame,
             text="Apply Changes",
             command=self.apply_changes,
             state='disabled'
         )
-        self.apply_btn.pack(side=tk.RIGHT, padx=5)
+        self.apply_btn.pack(anchor=tk.E, pady=5)
+        
+        # Status label
+        self.status_label = ttk.Label(editor_frame, text="")
+        self.status_label.pack(anchor=tk.E)
         
     def on_prompt_select(self, event):
+        """Handle prompt selection"""
         selection = self.prompts_list.curselection()
         if not selection:
             return
             
         name = self.prompts_list.get(selection[0])
-        template = self.prompts_data['templates'].get(name, "")
+        template = self.prompts_data['templates'].get(name, '')
         
         self.name_entry.delete(0, tk.END)
         self.name_entry.insert(0, name)
@@ -145,11 +213,13 @@ class PromptEditorWindow:
         self.template_text.insert('1.0', template)
         
     def new_prompt(self):
+        """Clear the editor for a new prompt"""
         self.name_entry.delete(0, tk.END)
         self.template_text.delete('1.0', tk.END)
         self.prompts_list.selection_clear(0, tk.END)
         
     def save_prompt(self):
+        """Save the current prompt"""
         name = self.name_entry.get().strip()
         template = self.template_text.get('1.0', 'end-1c').strip()
         
@@ -162,28 +232,26 @@ class PromptEditorWindow:
             return
             
         # Update data
-        if name not in self.prompts_data['options']:
-            self.prompts_data['options'].append(name)
-            self.prompts_list.insert(tk.END, name)
-            
         self.prompts_data['templates'][name] = template
-        self.save_to_file()
+        
+        # Refresh list if it's a new prompt
+        if name not in self.prompts_list.get(0, tk.END):
+            self.prompts_list.insert(tk.END, name)
         
         # Mark as having unsaved changes
         self.mark_unsaved_changes()
         messagebox.showinfo("Success", "Prompt saved successfully")
         
     def delete_prompt(self):
+        """Delete the selected prompt"""
         selection = self.prompts_list.curselection()
         if not selection:
             return
             
         name = self.prompts_list.get(selection[0])
         if messagebox.askyesno("Confirm Delete", f"Delete prompt '{name}'?"):
-            self.prompts_data['options'].remove(name)
             self.prompts_data['templates'].pop(name, None)
             self.prompts_list.delete(selection[0])
-            self.save_to_file()
             self.new_prompt()
             
             # Mark as having unsaved changes
@@ -202,23 +270,23 @@ class PromptEditorWindow:
         """Apply changes to all modules"""
         try:
             # Update the global prompt variables
-            improvement_options.clear()
-            improvement_options.extend(self.prompts_data['options'])
-            
             llm_prompts.clear()
             llm_prompts.update(self.prompts_data['templates'])
+            
+            # Save to file
+            self.save_prompts_to_file()
             
             # Notify all registered callbacks
             for callback in self.update_callbacks:
                 try:
-                    callback(self.prompts_data['options'])
+                    callback(list(llm_prompts.keys()))
                 except Exception as e:
                     logger.error(f"Error notifying prompt update: {e}")
             
             # Reset status
             self.has_unsaved_changes = False
             self.status_label.config(
-                text="Changes applied successfully",
+                text="Changes applied and saved successfully",
                 foreground='#4CAF50'  # Green color
             )
             self.apply_btn.config(state='disabled')
@@ -229,23 +297,17 @@ class PromptEditorWindow:
             logger.error(f"Error applying changes: {e}")
             messagebox.showerror("Error", f"Failed to apply changes: {e}")
     
-    def save_to_file(self):
-        try:
-            # Save to config file
-            config_path = os.path.join('lifai', 'config', 'custom_prompts.json')
-            with open(config_path, 'w') as f:
-                json.dump(self.prompts_data, f, indent=4)
-            logger.info("Prompts saved to file")
-        except Exception as e:
-            logger.error(f"Error saving prompts: {e}")
-            messagebox.showerror("Error", f"Failed to save prompts: {e}")
-            
     def export_prompts(self):
         try:
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            filename = f'prompts_export_{timestamp}.json'
-            with open(filename, 'w') as f:
-                json.dump(self.prompts_data, f, indent=4)
+            filename = f'prompts_export_{timestamp}.py'
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write("llm_prompts = {\n")
+                for name, template in self.prompts_data['templates'].items():
+                    f.write(f"    \"{name}\": \"\"\"{template}\"\"\",\n")
+                f.write("}\n\n")
+                f.write("# Get options from llm_prompts keys\n")
+                f.write("improvement_options = list(llm_prompts.keys())\n")
             messagebox.showinfo("Success", f"Prompts exported to {filename}")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to export: {e}")
@@ -254,22 +316,31 @@ class PromptEditorWindow:
         try:
             filename = filedialog.askopenfilename(
                 title="Import Prompts",
-                filetypes=[("JSON files", "*.json")]
+                filetypes=[("Python files", "*.py"), ("JSON files", "*.json")]
             )
             if filename:
-                with open(filename) as f:
-                    data = json.load(f)
-                    if 'options' in data and 'templates' in data:
-                        self.prompts_data = data
-                        self.refresh_list()
-                        self.save_to_file()
-                        messagebox.showinfo("Success", "Prompts imported successfully")
-                    else:
-                        raise ValueError("Invalid prompts file format")
+                if filename.endswith('.json'):
+                    with open(filename) as f:
+                        data = json.load(f)
+                        self.prompts_data = {'templates': data['templates']}
+                else:  # Python file
+                    namespace = {}
+                    with open(filename) as f:
+                        exec(f.read(), namespace)
+                    self.prompts_data = {'templates': namespace.get('llm_prompts', {})}
+                
+                if self.prompts_data['templates']:
+                    self.refresh_list()
+                    self.notify_prompt_updates()
+                    messagebox.showinfo("Success", "Prompts imported successfully")
+                else:
+                    raise ValueError("Invalid prompts file format")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to import: {e}")
             
     def refresh_list(self):
         self.prompts_list.delete(0, tk.END)
-        for option in self.prompts_data['options']:
-            self.prompts_list.insert(tk.END, option) 
+        for option in self.prompts_data['templates'].keys():
+            self.prompts_list.insert(tk.END, option)
+
+    

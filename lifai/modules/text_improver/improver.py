@@ -1,5 +1,10 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTextEdit,
+                            QPushButton, QComboBox, QLabel, QFrame, QToolBar,
+                            QProgressBar)
+from PyQt6.QtGui import QTextCharFormat, QFont, QColor, QTextCursor
+from PyQt6.QtCore import Qt
 from typing import Dict
 from lifai.utils.ollama_client import OllamaClient
 from lifai.config.prompts import improvement_options, llm_prompts
@@ -7,150 +12,218 @@ from lifai.utils.logger_utils import get_module_logger
 
 logger = get_module_logger(__name__)
 
-class TextImproverWindow:
+class TextImproverWindow(QWidget):
     def __init__(self, settings: Dict, ollama_client: OllamaClient):
+        super().__init__()
         logger.info("Initializing Text Improver Window")
         self.settings = settings
         self.ollama_client = ollama_client
-        self.window = None
-        self.cached_options = None
-
-    def create_window(self):
-        """Create the text improver window"""
-        self.window = tk.Toplevel()
-        self.window.title("Text Improver")
-        
-        # Prevent window from being closed with X button
-        self.window.protocol("WM_DELETE_WINDOW", lambda: None)
-        
-        self.selected_improvement = tk.StringVar(self.window)
+        self.selected_improvement = None
         self.setup_ui()
-        logger.info("Text Improver window created successfully")
-
-    def process_text(self):
-        text = self.input_text.get(1.0, tk.END).strip()
-        if not text:
-            logger.warning("No text provided for processing")
-            return
-
-        logger.info("Processing text with Text Improver")
-        self.status_label.config(text="Processing...")
-        self.window.update()
-
-        try:
-            current_model = self.settings.get('model')
-            if not current_model or not hasattr(current_model, 'get'):
-                logger.error("Model settings not properly initialized")
-                messagebox.showerror("Error", "Model not properly selected")
-                return
-
-            model_name = current_model.get()
-            if not model_name:
-                logger.error("No model selected")
-                messagebox.showerror("Error", "Please select a model first")
-                return
-
-            improvement = self.selected_improvement.get()
-            logger.debug(f"Selected improvement type: {improvement}")
-            
-            # Simple, clear prompt
-            prompt = f"Please {improvement}:\n\n{text}"
-            
-            logger.debug("Sending request to Ollama")
-            improved_text = self.ollama_client.generate_response(
-                prompt=prompt,
-                model=model_name
-            )
-            
-            if improved_text:
-                logger.info("Successfully improved text")
-                self.output_text.delete(1.0, tk.END)
-                self.output_text.insert(tk.END, improved_text)
-            else:
-                logger.error("Failed to generate improved text")
-                messagebox.showerror("Error", "Failed to generate improved text")
-        except Exception as e:
-            logger.error(f"Error processing text: {str(e)}")
-            messagebox.showerror("Error", f"An error occurred: {e}")
-        finally:
-            self.status_label.config(text="")
-
+        self.hide()  # Start hidden
+        
     def setup_ui(self):
-        # Input area
-        self.input_label = ttk.Label(self.window, text="Original Text:")
-        self.input_label.pack(pady=5)
-        self.input_text = tk.Text(self.window, height=10)
-        self.input_text.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
-
-        # Output area
-        self.output_label = ttk.Label(self.window, text="Improved Text:")
-        self.output_label.pack(pady=5)
-        self.output_text = tk.Text(self.window, height=10)
-        self.output_text.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
-
+        """Setup the main UI components"""
+        self.setWindowTitle("Text Improver")
+        self.resize(1200, 800)
+        
+        # Main layout
+        layout = QVBoxLayout()
+        self.setLayout(layout)
+        
+        # Editor container
+        editor_layout = QHBoxLayout()
+        layout.addLayout(editor_layout)
+        
+        # Left side (Input)
+        input_frame = QFrame()
+        input_layout = QVBoxLayout()
+        input_frame.setLayout(input_layout)
+        
+        # Input toolbar
+        input_toolbar = QToolBar()
+        self.setup_formatting_toolbar(input_toolbar)
+        input_layout.addWidget(input_toolbar)
+        
+        # Input editor
+        self.input_text = QTextEdit()
+        self.setup_editor(self.input_text)
+        input_layout.addWidget(self.input_text)
+        
+        editor_layout.addWidget(input_frame)
+        
+        # Right side (Output)
+        output_frame = QFrame()
+        output_layout = QVBoxLayout()
+        output_frame.setLayout(output_layout)
+        
+        # Output toolbar (for consistency with input side)
+        output_toolbar = QToolBar()
+        self.setup_formatting_toolbar(output_toolbar)
+        output_layout.addWidget(output_toolbar)
+        
+        # Output editor
+        self.output_text = QTextEdit()
+        self.setup_editor(self.output_text)
+        self.output_text.setReadOnly(True)
+        output_layout.addWidget(self.output_text)
+        
+        editor_layout.addWidget(output_frame)
+        
+        # Bottom controls
+        controls_layout = QHBoxLayout()
+        
         # Improvement selection
-        self.improvement_label = ttk.Label(self.window, text="Select Improvement:")
-        self.improvement_label.pack(pady=5)
-        self.improvement_dropdown = ttk.Combobox(
-            self.window,
-            textvariable=self.selected_improvement,
-            values=improvement_options,
-            width=30
-        )
-        self.improvement_dropdown.pack(pady=5)
-        self.improvement_dropdown.current(0)
-
-        # Enhance button
-        self.enhance_button = ttk.Button(
-            self.window,
-            text="Enhance",
-            command=self.process_text
-        )
-        self.enhance_button.pack(pady=10)
-
+        controls_layout.addWidget(QLabel("Select Prompts:"))
+        self.improvement_dropdown = QComboBox()
+        self.improvement_dropdown.addItems(improvement_options)
+        controls_layout.addWidget(self.improvement_dropdown)
+        
+        # Process button
+        self.enhance_button = QPushButton("Process")
+        self.enhance_button.clicked.connect(self.process_text)
+        controls_layout.addWidget(self.enhance_button)
+        
+        # Progress bar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setMaximum(100)
+        self.progress_bar.setMinimum(0)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFixedWidth(200)  # Set fixed width
+        controls_layout.addWidget(self.progress_bar)
+        
         # Status label
-        self.status_label = ttk.Label(self.window, text="")
-        self.status_label.pack(pady=5)
+        self.status_label = QLabel("")
+        controls_layout.addWidget(self.status_label)
+        
+        controls_layout.addStretch()
+        layout.addLayout(controls_layout)
+
+    def setup_editor(self, editor: QTextEdit):
+        """Configure editor settings"""
+        editor.setAcceptRichText(True)
+        editor.setFont(QFont('Arial', 11))
+        # Enable HTML formatting
+        editor.setHtml("")
+        
+    def setup_formatting_toolbar(self, toolbar: QToolBar):
+        """Setup formatting toolbar actions"""
+        # Font formatting
+        bold_action = toolbar.addAction("Bold")
+        bold_action.setCheckable(True)
+        bold_action.toggled.connect(lambda x: self.format_text('bold', x))
+        
+        italic_action = toolbar.addAction("Italic")
+        italic_action.setCheckable(True)
+        italic_action.toggled.connect(lambda x: self.format_text('italic', x))
+        
+        underline_action = toolbar.addAction("Underline")
+        underline_action.setCheckable(True)
+        underline_action.toggled.connect(lambda x: self.format_text('underline', x))
+        
+        toolbar.addSeparator()
+        
+        # Alignment
+        left_align = toolbar.addAction("Left")
+        left_align.triggered.connect(lambda: self.align_text(Qt.AlignmentFlag.AlignLeft))
+        
+        center_align = toolbar.addAction("Center")
+        center_align.triggered.connect(lambda: self.align_text(Qt.AlignmentFlag.AlignCenter))
+        
+        right_align = toolbar.addAction("Right")
+        right_align.triggered.connect(lambda: self.align_text(Qt.AlignmentFlag.AlignRight))
+
+    def format_text(self, format_type: str, enabled: bool):
+        """Apply formatting to selected text"""
+        cursor = self.input_text.textCursor()
+        char_format = cursor.charFormat()
+        
+        if format_type == 'bold':
+            char_format.setFontWeight(QFont.Weight.Bold if enabled else QFont.Weight.Normal)
+        elif format_type == 'italic':
+            char_format.setFontItalic(enabled)
+        elif format_type == 'underline':
+            char_format.setFontUnderline(enabled)
+            
+        cursor.mergeCharFormat(char_format)
+        self.input_text.setTextCursor(cursor)
+
+    def align_text(self, alignment):
+        """Set text alignment"""
+        self.input_text.setAlignment(alignment)
 
     def process_text(self):
-        text = self.input_text.get(1.0, tk.END).strip()
+        """Process the text while preserving formatting"""
+        text = self.input_text.toPlainText().strip()
         if not text:
             return
 
-        self.status_label.config(text="Processing...")
-        self.window.update()
+        self.status_label.setText("Processing...")
+        self.enhance_button.setEnabled(False)
+        self.progress_bar.setValue(0)
+        self.repaint()
 
         try:
-            improvement = self.selected_improvement.get()
+            # Simulate progress (since we can't get real-time progress from ollama)
+            self.progress_bar.setValue(20)
+            
+            improvement = self.improvement_dropdown.currentText()
             prompt = llm_prompts.get(improvement, "Please improve this text:")
             prompt = prompt.format(text=text)
+            
+            self.progress_bar.setValue(40)
             
             improved_text = self.ollama_client.generate_response(
                 prompt=prompt,
                 model=self.settings['model'].get()
             )
             
+            self.progress_bar.setValue(80)
+            
             if improved_text:
-                self.output_text.delete(1.0, tk.END)
-                self.output_text.insert(tk.END, improved_text)
+                # Preserve formatting by copying HTML format
+                self.output_text.setHtml(improved_text)
+                self.status_label.setText("Text processed successfully!")
+                self.progress_bar.setValue(100)
             else:
-                messagebox.showerror("Error", "Failed to generate improved text")
+                self.show_error("Failed to generate improved text")
+                self.progress_bar.setValue(0)
         except Exception as e:
-            messagebox.showerror("Error", f"An error occurred: {e}")
+            logger.error(f"Error processing text: {e}")
+            self.show_error(f"An error occurred: {e}")
+            self.progress_bar.setValue(0)
         finally:
-            self.status_label.config(text="")
+            self.enhance_button.setEnabled(True)
 
-    def show(self):
-        if not self.window:
-            self.create_window()
-        self.window.deiconify()
-
-    def hide(self):
-        if self.window:
-            self.window.withdraw()
+    def show_error(self, message: str):
+        """Show error message"""
+        from PyQt6.QtWidgets import QMessageBox
+        QMessageBox.critical(self, "Error", message)
 
     def update_prompts(self, new_options):
-        """Handle prompt updates whether window is active or not"""
-        self.cached_options = new_options
-        if self.window:
-            self.update_window_prompts(new_options)
+        """Update available improvement options"""
+        current = self.improvement_dropdown.currentText()
+        
+        # Update dropdown values
+        self.improvement_dropdown.clear()
+        self.improvement_dropdown.addItems(new_options)
+        
+        # Try to restore previous selection
+        index = self.improvement_dropdown.findText(current)
+        if index >= 0:
+            self.improvement_dropdown.setCurrentIndex(index)
+        
+        logger.info(f"Updated improver prompts: {len(new_options)} options available")
+
+    def show(self):
+        """Show the window"""
+        super().show()
+        self.raise_()
+
+    def hide(self):
+        """Hide the window"""
+        super().hide()
+
+    def isVisible(self):
+        """Check if window is visible"""
+        return super().isVisible()

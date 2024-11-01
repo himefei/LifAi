@@ -1,8 +1,9 @@
 import tkinter as tk
-from tkinter import ttk, scrolledtext
+from tkinter import ttk, scrolledtext, messagebox
 import logging
 import os
 import sys
+import json
 from datetime import datetime
 
 # Add project root to Python path
@@ -14,6 +15,7 @@ from lifai.modules.text_improver.improver import TextImproverWindow
 from lifai.modules.floating_toolbar.toolbar import FloatingToolbarModule
 from lifai.core.toggle_switch import ToggleSwitch
 from lifai.modules.prompt_editor.editor import PromptEditorWindow
+from lifai.modules.AI_chat.ai_chat import ChatWindow
 
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -59,7 +61,7 @@ class LifAiHub:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("LifAi Control Hub")
-        self.root.geometry("600x500")  # Made window larger to accommodate logs
+        self.root.geometry("600x500")
         
         # Configure background color
         self.root.configure(bg='#ffffff')
@@ -71,9 +73,13 @@ class LifAiHub:
         # Initialize Ollama client
         self.ollama_client = OllamaClient()
         
+        # Load last selected model
+        self.config_file = os.path.join(project_root, 'lifai', 'config', 'app_settings.json')
+        last_model = self.load_last_model()
+        
         # Shared settings
         self.settings = {
-            'model': tk.StringVar(value=''),  # Initialize with empty string
+            'model': tk.StringVar(value=last_model),
             'models_list': []
         }
         
@@ -86,6 +92,54 @@ class LifAiHub:
         
         # Bind window close event
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
+        # Bind model selection change
+        self.settings['model'].trace_add('write', self.on_model_change)
+
+    def load_last_model(self) -> str:
+        """Load the last selected model from config file"""
+        try:
+            if os.path.exists(self.config_file):
+                with open(self.config_file, 'r') as f:
+                    config = json.load(f)
+                    return config.get('last_model', '')
+        except Exception as e:
+            logging.error(f"Error loading last model: {e}")
+        return ''
+
+    def save_last_model(self):
+        """Save the current model selection to config file"""
+        try:
+            config = {'last_model': self.settings['model'].get()}
+            os.makedirs(os.path.dirname(self.config_file), exist_ok=True)
+            with open(self.config_file, 'w') as f:
+                json.dump(config, f)
+        except Exception as e:
+            logging.error(f"Error saving last model: {e}")
+
+    def on_model_change(self, *args):
+        """Handle model selection change"""
+        self.save_last_model()
+
+    def refresh_models(self):
+        """Refresh the list of available models"""
+        try:
+            current_model = self.settings['model'].get()
+            self.models_list = self.ollama_client.fetch_models()
+            self.model_dropdown['values'] = self.models_list
+            
+            # Try to keep the current selection if it still exists
+            if current_model in self.models_list:
+                self.settings['model'].set(current_model)
+            elif self.models_list:
+                self.settings['model'].set(self.models_list[0])
+            else:
+                self.settings['model'].set('')
+                
+            logging.info("Models list refreshed successfully")
+        except Exception as e:
+            logging.error(f"Error refreshing models: {e}")
+            messagebox.showerror("Error", f"Failed to refresh models: {e}")
 
     def setup_ui(self):
         # Settings panel with padding
@@ -113,7 +167,20 @@ class LifAiHub:
             state='readonly'
         )
         self.model_dropdown.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        if self.models_list:
+        
+        # Refresh button
+        refresh_btn = ttk.Button(
+            model_container,
+            text="🔄 Refresh",
+            command=self.refresh_models,
+            width=10
+        )
+        refresh_btn.pack(side=tk.LEFT, padx=5)
+        
+        # Set initial model selection
+        if self.settings['model'].get() in self.models_list:
+            self.model_dropdown.set(self.settings['model'].get())
+        elif self.models_list:
             self.model_dropdown.current(0)
         
         # Module controls
@@ -148,11 +215,15 @@ class LifAiHub:
         )
         self.prompt_editor_toggle.pack(fill=tk.X, pady=5)
 
-        # Initialize logging setup
-        self.setup_logging()
-
-    def setup_logging(self):
-        # Create debug frame
+        # AI Chat toggle
+        self.chat_toggle = ToggleSwitch(
+            self.modules_frame,
+            "AI Chat",
+            self.toggle_chat
+        )
+        self.chat_toggle.pack(fill=tk.X, pady=5)
+        
+        # Debug log panel
         self.debug_frame = ttk.LabelFrame(
             self.root,
             text="Debug Logs",
@@ -160,23 +231,20 @@ class LifAiHub:
         )
         self.debug_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        # Create log text widget with scrollbar
+        # Add scrolled text widget for logs
         self.log_widget = scrolledtext.ScrolledText(
             self.debug_frame,
             height=10,
-            width=50,
-            font=('Consolas', 9),
-            bg='#f8f9fa',
-            wrap=tk.WORD,
-            state='disabled'
+            wrap=tk.WORD
         )
         self.log_widget.pack(fill=tk.BOTH, expand=True)
+        self.log_widget.configure(state='disabled')
         
-        # Configure logging
+        # Configure logging to use our widget
         root_logger = logging.getLogger()
-        root_logger.setLevel(logging.DEBUG)
+        root_logger.setLevel(logging.INFO)
         
-        # Remove any existing handlers
+        # Remove existing handlers
         for handler in root_logger.handlers[:]:
             root_logger.removeHandler(handler)
         
@@ -270,16 +338,22 @@ class LifAiHub:
             settings=self.settings,
             ollama_client=self.ollama_client
         )
-        
+
+        # Initialize AI Chat module
+        self.modules['chat'] = ChatWindow(
+            settings=self.settings,
+            ollama_client=self.ollama_client
+        )
+
         # Register prompt update callbacks
         if hasattr(self.modules['text_improver'], 'update_prompts'):
             self.modules['prompt_editor'].add_update_callback(
                 self.modules['text_improver'].update_prompts
             )
             
-        if hasattr(self.modules['floating_toolbar'].toolbar, 'update_prompts'):
+        if hasattr(self.modules['floating_toolbar'], 'update_prompts'):
             self.modules['prompt_editor'].add_update_callback(
-                self.modules['floating_toolbar'].toolbar.update_prompts
+                self.modules['floating_toolbar'].update_prompts
             )
 
     def toggle_text_improver(self):
@@ -300,6 +374,12 @@ class LifAiHub:
         else:
             self.modules['prompt_editor'].hide()
 
+    def toggle_chat(self):
+        if self.chat_toggle.get():
+            self.modules['chat'].show()
+        else:
+            self.modules['chat'].hide()
+
     def run(self):
         # Make sure the hub window stays on top
         self.root.attributes('-topmost', True)
@@ -307,6 +387,9 @@ class LifAiHub:
 
     def on_closing(self):
         """Handle application closing"""
+        # Save current model selection
+        self.save_last_model()
+        
         # Destroy all module windows
         for module in self.modules.values():
             if hasattr(module, 'destroy'):

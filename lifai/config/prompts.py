@@ -1,15 +1,7 @@
-improvement_options = [
-    "Fix spelling and grammar",
-    "Improve writing quality",
-    "Make text more polite and friendly",
-    "Simplify text",
-    "Summarize",
-    "Analyze and respond",
-    "Translate to Chinese",
-    "Translate to English"
-]
+import os
 
-llm_prompts = {
+# Default prompts
+default_prompts = {
     "Fix spelling and grammar": """Act as a professional editor. Review and correct any spelling mistakes, grammatical errors, and typos in the text below. Maintain the original meaning, tone, and style:
 
 Text to correct:
@@ -93,5 +85,29 @@ Instructions:
 2. Provide a high-quality English translation
 3. Maintain any formatting or paragraph structure from the original
 
-Provide the English translation only, without explanations or notes."""
-} 
+Provide the English translation only, without explanations or notes.""",
+
+    "Call centre vibe": """You are the best tech support and call centre customer service person. You will first try to understand the text and what the customer's pain point from the inpu text, then rewrite the text with your customer service soft skill with empathy and try to address the pain points the customer has with your response.
+
+Input text:
+{text}
+
+Provide only the rewrite version without your commonts.
+When rewrite your response, make sure you are aware of the input text type. If it is an email format, you will response with an email. If it is a message, you will respond message. So on and so forth."""
+}
+
+# Try to load saved prompts, fall back to defaults if not found
+saved_prompts_file = os.path.join(os.path.dirname(__file__), 'saved_prompts.py')
+try:
+    if os.path.exists(saved_prompts_file):
+        namespace = {}
+        with open(saved_prompts_file, 'r', encoding='utf-8') as f:
+            exec(f.read(), namespace)
+        llm_prompts = namespace.get('llm_prompts', default_prompts)
+    else:
+        llm_prompts = default_prompts.copy()
+except Exception:
+    llm_prompts = default_prompts.copy()
+
+# Get options from llm_prompts keys
+improvement_options = list(llm_prompts.keys())

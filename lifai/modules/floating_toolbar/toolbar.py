@@ -201,7 +201,10 @@ class FloatingToolbar(tk.Toplevel):
         if current in new_options:
             self.selected_prompt.set(current)
         else:
-            self.prompt_combo.set(new_options[0])
+            self.selected_prompt.set(new_options[0])
+        
+        # Force the combobox to refresh
+        self.prompt_combo.update()
 
 class FloatingToolbarModule:
     def __init__(self, settings: Dict, ollama_client: OllamaClient):
@@ -210,7 +213,7 @@ class FloatingToolbarModule:
         self.ollama_client = ollama_client
         self.clipboard = ClipboardManager()
         self.toolbar = None
-        self.cached_options = None  # Store updates when toolbar is not active
+        self.cached_options = None
 
     def enable(self):
         logger.info("Enabling Floating Toolbar")
@@ -261,3 +264,5 @@ class FloatingToolbarModule:
         self.cached_options = new_options
         if self.toolbar:
             self.toolbar.update_prompts(new_options)
+
+    
