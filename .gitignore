@@ -50,3 +50,6 @@ site/
 # Dependencies
 pip-log.txt
 pip-delete-this-directory.txt 
+
+# Folders
+modules/AI_chat/chat_history/

@@ -16,6 +16,7 @@ from lifai.modules.floating_toolbar.toolbar import FloatingToolbarModule
 from lifai.core.toggle_switch import ToggleSwitch
 from lifai.modules.prompt_editor.editor import PromptEditorWindow
 from lifai.modules.AI_chat.ai_chat import ChatWindow
+from lifai.modules.agent_workspace.workspace import AgentWorkspaceWindow
 
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -223,6 +224,14 @@ class LifAiHub:
         )
         self.chat_toggle.pack(fill=tk.X, pady=5)
         
+        # Agent Workspace toggle
+        self.agent_workspace_toggle = ToggleSwitch(
+            self.modules_frame,
+            "Agent Workspace",
+            self.toggle_agent_workspace
+        )
+        self.agent_workspace_toggle.pack(fill=tk.X, pady=5)
+        
         # Debug log panel
         self.debug_frame = ttk.LabelFrame(
             self.root,
@@ -345,6 +354,12 @@ class LifAiHub:
             ollama_client=self.ollama_client
         )
 
+        # Initialize Agent Workspace module
+        self.modules['agent_workspace'] = AgentWorkspaceWindow(
+            settings=self.settings,
+            ollama_client=self.ollama_client
+        )
+
         # Register prompt update callbacks
         if hasattr(self.modules['text_improver'], 'update_prompts'):
             self.modules['prompt_editor'].add_update_callback(
@@ -379,6 +394,12 @@ class LifAiHub:
             self.modules['chat'].show()
         else:
             self.modules['chat'].hide()
+
+    def toggle_agent_workspace(self):
+        if self.agent_workspace_toggle.get():
+            self.modules['agent_workspace'].show()
+        else:
+            self.modules['agent_workspace'].hide()
 
     def run(self):
         # Make sure the hub window stays on top

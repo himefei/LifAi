@@ -19,6 +19,7 @@ class TextImproverWindow(QWidget):
         self.settings = settings
         self.ollama_client = ollama_client
         self.selected_improvement = None
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowCloseButtonHint)
         self.setup_ui()
         self.hide()  # Start hidden
         
@@ -227,3 +228,7 @@ class TextImproverWindow(QWidget):
     def isVisible(self):
         """Check if window is visible"""
         return super().isVisible()
+
+    def closeEvent(self, event):
+        event.ignore()  # This prevents the window from being closed
+        self.hide()    # Instead, we just hide the window
